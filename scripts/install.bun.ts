@@ -2,10 +2,13 @@
 /**
  * Install or uninstall the keytap launch agent.
  *
- *   bun scripts/install.bun.ts install [--bin path/to/keytap]
+ *   bun scripts/bundle.bun.ts
+ *   bun scripts/install.bun.ts install
  *   bun scripts/install.bun.ts uninstall
  *
- * Resolves paths at install time. Never writes machine-local paths into git.
+ * Points launchd at Keytap.app/Contents/MacOS/keytap so Accessibility TCC
+ * uses the bundle id (dev.keytap), not the terminal. Paths are resolved at
+ * install time; never commit a rendered plist.
  */
 
 const LABEL = "dev.keytap";
@@ -21,23 +24,23 @@ const logPath = `${home}/Library/Logs/keytap.log`;
 
 const repoRoot = Bun.fileURLToPath(new URL("..", import.meta.url));
 const templatePath = `${repoRoot}/packaging/launchd/dev.keytap.plist.in`;
+const defaultAppBin = `${repoRoot}/target/Keytap.app/Contents/MacOS/keytap`;
 
 const args = process.argv.slice(2);
 const cmd = args[0];
 
 function usage(): never {
   console.error(`Usage:
-  bun scripts/install.bun.ts install [--bin <path>]
+  bun scripts/install.bun.ts install [--bin <Keytap.app/Contents/MacOS/keytap>]
   bun scripts/install.bun.ts uninstall`);
   process.exit(2);
 }
 
 async function defaultBin(): Promise<string> {
-  const release = `${repoRoot}/target/release/keytap`;
-  const debug = `${repoRoot}/target/debug/keytap`;
-  if (await Bun.file(release).exists()) return release;
-  if (await Bun.file(debug).exists()) return debug;
-  console.error("No keytap binary found. Build first: cargo build -p keytap --release");
+  if (await Bun.file(defaultAppBin).exists()) return defaultAppBin;
+  console.error(
+    "Keytap.app not found. Build it first:\n  bun scripts/bundle.bun.ts",
+  );
   process.exit(1);
 }
 
@@ -51,10 +54,14 @@ async function install() {
     }
   }
   bin = bin ?? (await defaultBin());
-  const binFile = Bun.file(bin);
-  if (!(await binFile.exists())) {
+  if (!(await Bun.file(bin).exists())) {
     console.error(`binary not found: ${bin}`);
     process.exit(1);
+  }
+  if (!bin.includes("Keytap.app/Contents/MacOS/")) {
+    console.error(
+      "warning: binary is not inside Keytap.app; Accessibility may attach to the wrong identity",
+    );
   }
 
   const template = await Bun.file(templatePath).text();
@@ -66,11 +73,9 @@ async function install() {
   await Bun.$`mkdir -p ${home}/Library/Logs`.quiet();
   await Bun.write(plistPath, rendered);
 
-  // Unload if present, then load.
   await Bun.$`launchctl bootout gui/$UID/${LABEL}`.nothrow().quiet();
   const load = await Bun.$`launchctl bootstrap gui/$UID ${plistPath}`.nothrow();
   if (load.exitCode !== 0) {
-    // Fallback for older launchctl.
     await Bun.$`launchctl unload ${plistPath}`.nothrow().quiet();
     const legacy = await Bun.$`launchctl load ${plistPath}`.nothrow();
     if (legacy.exitCode !== 0) {
@@ -81,7 +86,9 @@ async function install() {
   console.log("installed", plistPath);
   console.log("binary  ", bin);
   console.log("log     ", logPath);
-  console.log("Grant Accessibility to the keytap binary if prompted, then:");
+  console.log("Grant Accessibility to Keytap (the app), then:");
+  console.log(`  open ${repoRoot}/target/Keytap.app`);
+  console.log("or:");
   console.log(`  launchctl kickstart -k gui/$UID/${LABEL}`);
 }
 

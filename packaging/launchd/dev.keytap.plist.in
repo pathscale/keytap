@@ -4,6 +4,7 @@
   Template only. Paths are filled at install time by scripts/install.bun.ts.
   Placeholders: @KEYTAP_BIN@  @KEYTAP_LOG@
   Do not commit a rendered plist with machine-local paths.
+  @KEYTAP_BIN@ should be Keytap.app/Contents/MacOS/keytap so TCC sees the bundle.
 -->
 <plist version="1.0">
 <dict>
@@ -17,6 +18,8 @@
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
   <key>StandardOutPath</key>
   <string>@KEYTAP_LOG@</string>
   <key>StandardErrorPath</key>
