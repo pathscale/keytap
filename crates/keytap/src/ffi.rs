@@ -123,6 +123,7 @@ pub const kCGEventFlagMaskCommand: CGEventFlags = 0x00100000;
 // CGEventField
 pub const kCGKeyboardEventKeycode: CGEventField = 9;
 pub const kCGKeyboardEventAutorepeat: CGEventField = 8;
+pub const kCGEventSourceUserData: CGEventField = 42;
 
 // CGEventSourceStateID
 pub const kCGEventSourceStateHIDSystemState: CGEventSourceStateID = 1;
@@ -168,6 +169,7 @@ unsafe extern "C" {
     ) -> CGEventRef;
 
     pub fn CGEventPost(tap: CGEventTapLocation, event: CGEventRef);
+    pub fn CGEventTapPostEvent(proxy: CGEventTapProxy, event: CGEventRef);
     pub fn CGEventSourceCreate(stateID: CGEventSourceStateID) -> CGEventSourceRef;
     pub fn CGEventSetSource(event: CGEventRef, source: CGEventSourceRef);
 }

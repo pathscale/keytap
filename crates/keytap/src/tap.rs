@@ -1,4 +1,11 @@
 //! CoreGraphics event tap: convert CG events to rules::Event, apply Engine, post.
+//!
+//! Synthetic events are tagged with `kCGEventSourceUserData = SYNTHETIC_TAG` and
+//! posted with `CGEventTapPostEvent` so they land after this tap and do not
+//! re-enter the callback. If one still appears (fallback `CGEventPost`), the
+//! callback passes it through without feeding the engine. Re-entry was the
+//! works-once bug: a synthetic Control-up ended the switcher session while the
+//! physical Control key was still held.
 
 use crate::ffi::{
     self, CFMachPortRef, CFRunLoopSourceRef, CGEventFlags, CGEventMask, CGEventRef,
@@ -8,6 +15,38 @@ use keytap_rules::{Action, Engine, Event, Flags, Key, Phase};
 use std::ffi::c_void;
 use std::ptr;
 
+/// Magic `kCGEventSourceUserData` value marking events we synthesized ('KTP1').
+pub const SYNTHETIC_TAG: i64 = 0x4B_54_50_31;
+
+pub fn debug_from_env() -> bool {
+    std::env::var_os("KEYTAP_DEBUG").is_some_and(|v| v != "0" && v != "false")
+}
+
+fn debug_log(state: &TapState, msg: &str) {
+    if state.debug {
+        eprintln!("keytap: {msg}");
+    }
+}
+
+/// Privacy-safe key label: named only for modifiers/tab/arrows/escape.
+fn debug_key(key: Key) -> String {
+    match key {
+        Key::Tab
+        | Key::ControlL
+        | Key::ControlR
+        | Key::CommandL
+        | Key::CommandR
+        | Key::ShiftL
+        | Key::ShiftR
+        | Key::Left
+        | Key::Right
+        | Key::Up
+        | Key::Down
+        | Key::Escape => key.name().to_string(),
+        Key::Other(_) => "other".to_string(),
+    }
+}
+
 /// Heap state shared with the C callback. Owned by `run()` via Box; the tap
 /// holds only a raw pointer. The CFRunLoop delivers callbacks serially on the
 /// same thread that called `run()`, so no locks or atomics are required.
@@ -16,6 +55,7 @@ pub struct TapState {
     pub port: CFMachPortRef,
     pub source: Option<CGEventSource>,
     pub dry_run: bool,
+    pub debug: bool,
 }
 
 /// Thin owner for CGEventSourceRef.
@@ -58,8 +98,6 @@ pub fn flags_from_cg(f: CGEventFlags) -> Flags {
 }
 
 pub fn flags_to_cg(f: Flags, base: CGEventFlags) -> CGEventFlags {
-    // Preserve unknown high bits (device-dependent) from the base event, then
-    // overlay the modifiers we manage.
     let managed = ffi::kCGEventFlagMaskControl
         | ffi::kCGEventFlagMaskCommand
         | ffi::kCGEventFlagMaskShift
@@ -93,6 +131,10 @@ fn phase_from_cg(t: CGEventType) -> Option<Phase> {
     }
 }
 
+fn is_synthetic(event: CGEventRef) -> bool {
+    unsafe { ffi::CGEventGetIntegerValueField(event, ffi::kCGEventSourceUserData) == SYNTHETIC_TAG }
+}
+
 fn event_from_cg(event: CGEventRef) -> Option<Event> {
     let t = unsafe { ffi::CGEventGetType(event) };
     let phase = phase_from_cg(t)?;
@@ -106,20 +148,14 @@ fn event_from_cg(event: CGEventRef) -> Option<Event> {
     })
 }
 
-fn post_event(state: &TapState, ev: &Event) {
+fn post_event(state: &TapState, proxy: CGEventTapProxy, ev: &Event) {
     if state.dry_run {
         eprintln!("dry-run post {}", ev.render());
         return;
     }
     let key_down = match ev.phase {
         Phase::KeyDown => true,
-        Phase::KeyUp => false,
-        Phase::FlagsChanged => {
-            // Represent flags-changed as a key-up/down of the modifier key with
-            // the desired flags. Creating a keyboard event and setting flags is
-            // enough for the switcher end path (we post KeyUp for command).
-            false
-        }
+        Phase::KeyUp | Phase::FlagsChanged => false,
     };
     let source = state
         .source
@@ -133,27 +169,45 @@ fn post_event(state: &TapState, ev: &Event) {
     }
     unsafe {
         ffi::CGEventSetFlags(cg, flags_to_cg(ev.flags, 0));
-        // FlagsChanged: set type explicitly if we ever post those. For KeyUp
-        // of modifiers, a keyboard event with keyDown=false is correct.
-        ffi::CGEventPost(ffi::kCGSessionEventTap, cg);
+        ffi::CGEventSetIntegerValueField(cg, ffi::kCGEventSourceUserData, SYNTHETIC_TAG);
+        // Post after this tap so the event does not re-enter our callback.
+        if !proxy.is_null() {
+            ffi::CGEventTapPostEvent(proxy, cg);
+        } else {
+            // Fallback: may re-enter; synthetic tag causes a pass-through then.
+            ffi::CGEventPost(ffi::kCGSessionEventTap, cg);
+        }
         ffi::CFRelease(cg as ffi::CFTypeRef);
     }
+    debug_log(
+        state,
+        &format!(
+            "post {} {} {} synthetic",
+            ev.phase.name(),
+            debug_key(ev.key),
+            ev.flags.render()
+        ),
+    );
 }
 
-/// Apply actions. Returns the event the callback should hand back to the system
-/// (null = suppress original).
-fn apply_actions(state: &mut TapState, original: CGEventRef, actions: &[Action]) -> CGEventRef {
+fn apply_actions(
+    state: &mut TapState,
+    proxy: CGEventTapProxy,
+    original: CGEventRef,
+    actions: &[Action],
+) -> CGEventRef {
     if state.dry_run {
         for a in actions {
             eprintln!("dry-run {}", a.render());
         }
-        // Never suppress or rewrite while dry-running; the user may be typing.
         return original;
     }
     let mut pass_back: CGEventRef = ptr::null_mut();
     for a in actions {
         match a {
-            Action::Suppress => {}
+            Action::Suppress => {
+                debug_log(state, "action suppress");
+            }
             Action::Pass(ev) => {
                 unsafe {
                     ffi::CGEventSetIntegerValueField(
@@ -165,15 +219,24 @@ fn apply_actions(state: &mut TapState, original: CGEventRef, actions: &[Action])
                     ffi::CGEventSetFlags(original, flags_to_cg(ev.flags, base));
                 }
                 pass_back = original;
+                debug_log(
+                    state,
+                    &format!(
+                        "action pass {} {} {}",
+                        ev.phase.name(),
+                        debug_key(ev.key),
+                        ev.flags.render()
+                    ),
+                );
             }
-            Action::Post(ev) => post_event(state, ev),
+            Action::Post(ev) => post_event(state, proxy, ev),
         }
     }
     pass_back
 }
 
 pub unsafe extern "C" fn tap_callback(
-    _proxy: CGEventTapProxy,
+    proxy: CGEventTapProxy,
     etype: CGEventType,
     event: CGEventRef,
     user_info: *mut c_void,
@@ -187,6 +250,25 @@ pub unsafe extern "C" fn tap_callback(
         eprintln!("keytap: tap disabled ({etype:#x}); re-enabling");
         if !state.port.is_null() {
             unsafe { ffi::CGEventTapEnable(state.port, true) };
+            debug_log(state, "tap re-enabled");
+        }
+        return event;
+    }
+
+    if is_synthetic(event) {
+        // Our own post came back (CGEventPost fallback). Do not feed the engine.
+        if let Some(ev) = event_from_cg(event) {
+            debug_log(
+                state,
+                &format!(
+                    "in {} {} {} synthetic (ignore)",
+                    ev.phase.name(),
+                    debug_key(ev.key),
+                    ev.flags.render()
+                ),
+            );
+        } else {
+            debug_log(state, "in unknown synthetic (ignore)");
         }
         return event;
     }
@@ -195,8 +277,24 @@ pub unsafe extern "C" fn tap_callback(
         return event;
     };
 
+    let before = state.engine.debug_state();
+    debug_log(
+        state,
+        &format!(
+            "in {} {} {} state={before} real",
+            ev.phase.name(),
+            debug_key(ev.key),
+            ev.flags.render()
+        ),
+    );
+
     let actions = state.engine.handle(ev);
-    apply_actions(state, event, &actions)
+    let after = state.engine.debug_state();
+    if before != after {
+        debug_log(state, &format!("state {before} -> {after}"));
+    }
+
+    apply_actions(state, proxy, event, &actions)
 }
 
 pub fn event_mask() -> CGEventMask {
@@ -208,18 +306,22 @@ pub fn event_mask() -> CGEventMask {
 pub struct Tap {
     port: CFMachPortRef,
     source: CFRunLoopSourceRef,
-    /// Pinned state; pointer passed to callback.
     state: *mut TapState,
 }
 
 impl Tap {
     pub fn create(engine: Engine, dry_run: bool) -> Result<Self, String> {
         let source = CGEventSource::new_private();
+        let debug = debug_from_env();
+        if debug {
+            eprintln!("keytap: KEYTAP_DEBUG=1 (modifier/tab/arrow/escape only)");
+        }
         let state = Box::new(TapState {
             engine,
             port: ptr::null_mut(),
             source,
             dry_run,
+            debug,
         });
         let state_ptr = Box::into_raw(state);
 
@@ -234,7 +336,6 @@ impl Tap {
             )
         };
         if port.is_null() {
-            // reclaim state
             unsafe {
                 drop(Box::from_raw(state_ptr));
             }
