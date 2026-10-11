@@ -90,12 +90,17 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    if !check_accessibility(true) {
+    // TCC keys off the signed bundle id. An unbundled debug binary shares the
+    // terminal's identity, so a grant there does not trust Keytap.app.
+    if !check_accessibility(false) {
+        let _ = check_accessibility(true); // prompt once; registers under our name
         eprintln!(
-            "keytap: Accessibility permission is required.\n\
-             Open System Settings → Privacy & Security → Accessibility\n\
-             and enable keytap (or the terminal you launched it from).\n\
-             Then run keytap again."
+            "keytap: not trusted for Accessibility yet.\n\
+             If a prompt appeared, click Open System Settings.\n\
+             Otherwise open System Settings -> Privacy & Security -> Accessibility\n\
+             and enable Keytap (the Keytap.app bundle, not your terminal).\n\
+             Prefer: open target/Keytap.app   or   bun scripts/install.bun.ts install\n\
+             Then run again (or launchctl kickstart the agent)."
         );
         return ExitCode::from(1);
     }
