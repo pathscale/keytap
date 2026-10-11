@@ -14,10 +14,12 @@ virtual keyboard is fragile (`virtual_hid_keyboard is not ready`).
 ## Design
 
 **Keep the macOS swap ON.** keytap does not undo it. It only rewrites the
-chords that break:
+chords that break (all default on):
 
-- Control+Tab → Command+Tab
-- Control+Shift+Tab → Command+Shift+Tab
+- Control+Tab / Control+Shift+Tab → Command(+Shift)+Tab (`control_tab_to_command_tab`)
+- Control+3 → Command+3 (`control_3_to_command_3`)
+- Control(+Shift)+arrows → Command(+Shift)+arrows (`control_arrows_to_command_arrows`)
+- Control+left click → Command+click (`control_click_to_command_click`)
 
 ### Held-modifier session
 
@@ -117,6 +119,55 @@ to refresh expected actions after an intentional rule change).
 
 No `Cargo.lock` is committed (same policy as chuzz).
 
+## Rebuild checklist
+
+End-to-end rebuild and reinstall after a rule or daemon change:
+
+1. Gate (build, clippy, fmt, fixtures). Only run `cargo run -p fixtures -- regen`
+   after an intentional rule change; otherwise keep `check`:
+
+```
+cargo build --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+cargo run -p fixtures -- check
+```
+
+2. Release binary, bundle, install. The install script turns debug ON by
+   default, so prefix `KEYTAP_DEBUG_INSTALL=0` unless you want noisy logs:
+
+```
+cargo build --release
+bun scripts/bundle.bun.ts
+KEYTAP_DEBUG_INSTALL=0 bun scripts/install.bun.ts install
+```
+
+3. Re-grant Accessibility (every ad-hoc rebuild drops the TCC grant; see
+   Bundle and Accessibility below). Toggle Keytap off and on in
+   System Settings → Privacy & Security → Accessibility.
+
+4. Verify the daemon is live:
+
+```
+tail ~/Library/Logs/keytap.log
+# expect: keytap: tap enabled, run loop starting
+```
+
+Optional restart without a full reinstall:
+
+```
+launchctl kickstart -k gui/$UID/dev.keytap
+```
+
+Stop:
+
+```
+launchctl bootout gui/$UID/dev.keytap
+```
+
+Debug logging is controlled by `KEYTAP_DEBUG` in the launchd plist. Leave it
+off for normal use; it is noisy.
+
 ## Bundle and Accessibility (TCC)
 
 macOS keys Accessibility grants to the **signed code identity**. An unbundled
@@ -131,7 +182,7 @@ target/Keytap.app/Contents/MacOS/keytap --check-ffi
 open target/Keytap.app                   # registers Keytap in Accessibility
 ```
 
-Then: System Settings -> Privacy & Security -> Accessibility -> enable **Keytap**.
+Then: System Settings → Privacy & Security → Accessibility → enable **Keytap**.
 Verify with:
 
 ```
@@ -140,9 +191,24 @@ target/Keytap.app/Contents/MacOS/keytap --check-ffi   # expect: trusted true
 
 `security find-identity -p codesigning -v` listed no Apple Development identity
 on the build machine, so the bundle is ad-hoc signed (`codesign --sign -`) with
-`--identifier dev.keytap`. That is enough for a stable local TCC identity. Prefer
-an Apple Development identity when one exists (the bundle script picks it
-automatically); use Developer ID only if you distribute off this Mac.
+`--identifier dev.keytap`. Ad-hoc signing is **not** a stable local TCC
+identity: macOS ties the Accessibility grant to the binary's code hash, so
+**every rebuild drops Accessibility**. The daemon then logs
+`keytap: not trusted for Accessibility yet` and launchd retries every 10s.
+
+Fix after each rebuild: toggle Keytap off and on in System Settings →
+Privacy & Security → Accessibility (or remove the entry, `open target/Keytap.app`,
+re-enable).
+
+Permanent fix options:
+
+- A self-signed Code Signing certificate from Keychain Access → Certificate
+  Assistant. The bundle script today only picks an `Apple Development`
+  identity; it would need a small change to accept the self-signed cert name.
+- A free Apple Development certificate via Xcode (the bundle script picks it
+  automatically when one exists).
+
+Use Developer ID only if you distribute off this Mac.
 
 ## Run (manual)
 
@@ -181,19 +247,27 @@ not what you want.
 
 - **Secure Input** (password fields, some sudo prompts) blocks event taps. Keys
   pass through unchanged until Secure Input ends; the tap stays alive.
-- **App switcher quirks.** The synthetic Command key-down/up path matches what
-  other remappers do, but has not been verified on this machine yet.
-- **Accessibility resets** after some OS updates; the daemon will fail to create
-  a tap and print the Settings path.
+- **Accessibility resets** after every ad-hoc rebuild (code-hash identity) and
+  after some OS updates; the daemon fails to create a tap, logs
+  `keytap: not trusted for Accessibility yet`, and launchd retries every 10s.
+  Re-grant as under Bundle and Accessibility.
 - **Two remappers at once.** Disable Karabiner (or at least its complex
   modifications) so it does not fight keytap.
-- **PC-style copy/paste** (Control+C → Command+C under the swap) is out of
-  scope for v1; only Tab is remapped.
+- **Only the listed chords are remapped.** Control+C and other Control chords
+  still pass through; PC-style copy/paste under the swap is out of scope.
+
+## Verified
+
+On 2026-10-11 (macOS 26.5), the user confirmed:
+
+- Control+Tab app switcher open / cycle / select
+- Command+3
+- Command+arrows
 
 ## Unverified
 
-- Real Control+Tab → app switcher open / cycle / select on macOS 26.5
 - Behaviour inside Secure Input fields
 - launchd KeepAlive across logout/login
 - Right-Control chord on a keyboard that has one
 - Whether `kCGSessionEventTap` vs `kCGHIDEventTap` matters for the Dock switcher
+- Command+click and Command+Shift+arrow selection: fixtures pass, awaiting live confirmation
