@@ -22,7 +22,7 @@ const launchAgents = `${home}/Library/LaunchAgents`;
 const plistPath = `${launchAgents}/${LABEL}.plist`;
 const logPath = `${home}/Library/Logs/keytap.log`;
 
-const repoRoot = Bun.fileURLToPath(new URL("..", import.meta.url));
+const repoRoot = Bun.fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 const templatePath = `${repoRoot}/packaging/launchd/dev.keytap.plist.in`;
 const defaultAppBin = `${repoRoot}/target/Keytap.app/Contents/MacOS/keytap`;
 
@@ -65,19 +65,21 @@ async function install() {
   }
 
   const template = await Bun.file(templatePath).text();
+  const debug = Bun.env.KEYTAP_DEBUG_INSTALL ?? "1";
   const rendered = template
     .replaceAll("@KEYTAP_BIN@", bin)
-    .replaceAll("@KEYTAP_LOG@", logPath);
+    .replaceAll("@KEYTAP_LOG@", logPath)
+    .replaceAll("@KEYTAP_DEBUG@", debug);
 
   await Bun.$`mkdir -p ${launchAgents}`.quiet();
   await Bun.$`mkdir -p ${home}/Library/Logs`.quiet();
   await Bun.write(plistPath, rendered);
 
   await Bun.$`launchctl bootout gui/$UID/${LABEL}`.nothrow().quiet();
-  const load = await Bun.$`launchctl bootstrap gui/$UID ${plistPath}`.nothrow();
+  const load = await Bun.$`launchctl bootstrap gui/$UID ${plistPath}`.nothrow().quiet();
   if (load.exitCode !== 0) {
     await Bun.$`launchctl unload ${plistPath}`.nothrow().quiet();
-    const legacy = await Bun.$`launchctl load ${plistPath}`.nothrow();
+    const legacy = await Bun.$`launchctl load ${plistPath}`.nothrow().quiet();
     if (legacy.exitCode !== 0) {
       console.error("launchctl load failed; plist written to", plistPath);
       process.exit(1);

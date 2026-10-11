@@ -2,9 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   Template only. Paths are filled at install time by scripts/install.bun.ts.
-  Placeholders: @KEYTAP_BIN@  @KEYTAP_LOG@
-  Do not commit a rendered plist with machine-local paths.
-  @KEYTAP_BIN@ should be Keytap.app/Contents/MacOS/keytap so TCC sees the bundle.
+  Placeholders (in the plist body only): KEYTAP_BIN, KEYTAP_LOG, KEYTAP_DEBUG
+  marked as @NAME@. Do not commit a rendered plist with machine-local paths.
+  KEYTAP_BIN should be Keytap.app/Contents/MacOS/keytap so TCC sees the bundle.
 -->
 <plist version="1.0">
 <dict>
@@ -14,6 +14,11 @@
   <array>
     <string>@KEYTAP_BIN@</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>KEYTAP_DEBUG</key>
+    <string>@KEYTAP_DEBUG@</string>
+  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>

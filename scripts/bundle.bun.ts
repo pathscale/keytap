@@ -11,7 +11,7 @@
  */
 
 const BUNDLE_ID = "dev.keytap";
-const repoRoot = Bun.fileURLToPath(new URL("..", import.meta.url));
+const repoRoot = Bun.fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 const appPath = `${repoRoot}/target/Keytap.app`;
 const contents = `${appPath}/Contents`;
 const macos = `${contents}/MacOS`;
