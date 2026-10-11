@@ -1,0 +1,47 @@
+# Control+arrow (physical Command+arrow under the OS swap) arrives as
+# Command+arrow for all four arrows, same burst as Control+3. Each release
+# is presented with Command. Control release passes.
+> key_down control_l control
+< pass key_down control_l control
+> key_down left control
+< suppress
+< post key_up control_l -
+< post key_down command_l command
+< post key_down left command
+< post key_up command_l -
+< post key_down control_l control
+> key_up left control
+< suppress
+< post key_up left command
+> key_down right control
+< suppress
+< post key_up control_l -
+< post key_down command_l command
+< post key_down right command
+< post key_up command_l -
+< post key_down control_l control
+> key_up right control
+< suppress
+< post key_up right command
+> key_down up control
+< suppress
+< post key_up control_l -
+< post key_down command_l command
+< post key_down up command
+< post key_up command_l -
+< post key_down control_l control
+> key_up up control
+< suppress
+< post key_up up command
+> key_down down control
+< suppress
+< post key_up control_l -
+< post key_down command_l command
+< post key_down down command
+< post key_up command_l -
+< post key_down control_l control
+> key_up down control
+< suppress
+< post key_up down command
+> key_up control_l -
+< pass key_up control_l -

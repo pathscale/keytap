@@ -1,0 +1,27 @@
+# Autorepeat runs the burst again with Caps Lock kept. Releasing Control
+# before the arrow still presents the arrow release with no stuck Control.
+> key_down control_l control|caps
+< pass key_down control_l control|caps
+> key_down left control|caps
+< suppress
+< post key_up control_l caps
+< post key_down command_l command|caps
+< post key_down left command|caps
+< post key_up command_l caps
+< post key_down control_l control|caps
+> key_down left control|caps
+< suppress
+< post key_up control_l caps
+< post key_down command_l command|caps
+< post key_down left command|caps
+< post key_up command_l caps
+< post key_down control_l control|caps
+> key_up control_l caps
+< pass key_up control_l caps
+> key_up left caps
+< suppress
+< post key_up left caps
+> key_down left caps
+< pass key_down left caps
+> key_up left caps
+< pass key_up left caps

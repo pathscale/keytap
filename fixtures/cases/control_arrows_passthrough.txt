@@ -1,0 +1,38 @@
+# Only Control alone is remapped. Control+Shift, Control+Option,
+# Control+Command arrows, Shift+arrow, and plain arrows pass through untouched.
+> key_down control_l control
+< pass key_down control_l control
+> key_down shift_l control|shift
+< pass key_down shift_l control|shift
+> key_down left control|shift
+< pass key_down left control|shift
+> key_up left control|shift
+< pass key_up left control|shift
+> key_up shift_l control
+< pass key_up shift_l control
+> key_down right control|option
+< pass key_down right control|option
+> key_up right control|option
+< pass key_up right control|option
+> key_down up control|command
+< pass key_down up control|command
+> key_up up control|command
+< pass key_up up control|command
+> key_up control_l -
+< pass key_up control_l -
+> key_down shift_l shift
+< pass key_down shift_l shift
+> key_down down shift
+< pass key_down down shift
+> key_up down shift
+< pass key_up down shift
+> key_up shift_l -
+< pass key_up shift_l -
+> key_down left -
+< pass key_down left -
+> key_up left -
+< pass key_up left -
+> key_down up caps
+< pass key_down up caps
+> key_up up caps
+< pass key_up up caps

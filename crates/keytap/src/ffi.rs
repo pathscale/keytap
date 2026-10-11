@@ -119,6 +119,8 @@ pub const kCGEventFlagMaskShift: CGEventFlags = 0x00020000;
 pub const kCGEventFlagMaskControl: CGEventFlags = 0x00040000;
 pub const kCGEventFlagMaskAlternate: CGEventFlags = 0x00080000;
 pub const kCGEventFlagMaskCommand: CGEventFlags = 0x00100000;
+pub const kCGEventFlagMaskNumericPad: CGEventFlags = 0x00200000;
+pub const kCGEventFlagMaskSecondaryFn: CGEventFlags = 0x00800000;
 
 // CGEventField
 pub const kCGKeyboardEventKeycode: CGEventField = 9;

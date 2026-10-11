@@ -1,0 +1,24 @@
+# Control+arrow then Control+Tab: the arrow remap does not disturb the switcher.
+> key_down control_l control
+< pass key_down control_l control
+> key_down left control
+< suppress
+< post key_up control_l -
+< post key_down command_l command
+< post key_down left command
+< post key_up command_l -
+< post key_down control_l control
+> key_up left control
+< suppress
+< post key_up left command
+> key_down tab control
+< suppress
+< post key_up control_l -
+< post key_down command_l command
+< post key_down tab command
+> key_up tab control
+< suppress
+< post key_up tab command
+> key_up control_l -
+< suppress
+< post key_up command_l -

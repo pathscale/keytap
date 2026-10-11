@@ -61,11 +61,17 @@ Path order:
 # keytap config
 control_tab_to_command_tab = true
 control_3_to_command_3 = true
+control_arrows_to_command_arrows = true
 ```
 
 `control_3_to_command_3`: physical Command+3 (Control+3 after the OS swap) reaches
 apps as Command+3. Only the digit 3 with Control alone; other digits and
 Shift/Option combos pass through. Control is restored afterwards while still held.
+
+`control_arrows_to_command_arrows`: physical Command+Left/Right/Up/Down
+(Control+arrow after the OS swap) reaches apps as Command+arrow: line start/end,
+document top/bottom. Same burst as Control+3, left or right Control. Only with
+Control alone; Shift/Option/Command combos and plain arrows pass through.
 
 ## Layout
 

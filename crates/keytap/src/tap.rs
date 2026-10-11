@@ -122,6 +122,17 @@ pub fn flags_to_cg(f: Flags, base: CGEventFlags) -> CGEventFlags {
     out
 }
 
+/// Non-modifier flag bits real hardware sets for a key. Arrow keys carry
+/// SecondaryFn and NumericPad; posting them without these can confuse apps.
+fn hardware_bits(key: Key) -> CGEventFlags {
+    match key {
+        Key::Left | Key::Right | Key::Up | Key::Down => {
+            ffi::kCGEventFlagMaskNumericPad | ffi::kCGEventFlagMaskSecondaryFn
+        }
+        _ => 0,
+    }
+}
+
 fn phase_from_cg(t: CGEventType) -> Option<Phase> {
     match t {
         ffi::kCGEventKeyDown => Some(Phase::KeyDown),
@@ -168,7 +179,7 @@ fn post_event(state: &TapState, proxy: CGEventTapProxy, ev: &Event) {
         return;
     }
     unsafe {
-        ffi::CGEventSetFlags(cg, flags_to_cg(ev.flags, 0));
+        ffi::CGEventSetFlags(cg, flags_to_cg(ev.flags, hardware_bits(ev.key)));
         ffi::CGEventSetIntegerValueField(cg, ffi::kCGEventSourceUserData, SYNTHETIC_TAG);
         // Post after this tap so the event does not re-enter our callback.
         if !proxy.is_null() {

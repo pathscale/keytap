@@ -351,6 +351,10 @@ pub struct Config {
     /// Control+3 -> Command+3 (physical Command+3 under the OS swap). Only the
     /// digit 3, only with Control alone; Shift/Option combos pass through.
     pub control_3_to_command_3: bool,
+    /// Control+Left/Right/Up/Down -> Command+arrow (physical Command+arrow
+    /// under the OS swap: line start/end, document top/bottom). Control alone
+    /// only; Shift/Option/Command combos pass through.
+    pub control_arrows_to_command_arrows: bool,
 }
 
 impl Default for Config {
@@ -358,6 +362,7 @@ impl Default for Config {
         Self {
             control_tab_to_command_tab: true,
             control_3_to_command_3: true,
+            control_arrows_to_command_arrows: true,
         }
     }
 }
@@ -383,6 +388,9 @@ impl Config {
                 "control_3_to_command_3" => {
                     cfg.control_3_to_command_3 = parse_bool(v, idx + 1)?;
                 }
+                "control_arrows_to_command_arrows" => {
+                    cfg.control_arrows_to_command_arrows = parse_bool(v, idx + 1)?;
+                }
                 other => return Err(format!("line {}: unknown key `{other}`", idx + 1)),
             }
         }
@@ -391,9 +399,10 @@ impl Config {
 
     pub fn render(&self) -> String {
         format!(
-            "# keytap config\ncontrol_tab_to_command_tab = {}\ncontrol_3_to_command_3 = {}\n",
+            "# keytap config\ncontrol_tab_to_command_tab = {}\ncontrol_3_to_command_3 = {}\ncontrol_arrows_to_command_arrows = {}\n",
             render_bool(self.control_tab_to_command_tab),
             render_bool(self.control_3_to_command_3),
+            render_bool(self.control_arrows_to_command_arrows),
         )
     }
 }
@@ -420,8 +429,9 @@ pub struct Engine {
     control_down: Option<Side>,
     /// After a remapped Tab: OS has been told Command is down for `side`.
     switcher: Option<Side>,
-    /// A remapped 3 is down (Control+3 sent as Command+3); its key_up is rewritten too.
-    digit3_down: bool,
+    /// Keys whose key_down was remapped Control -> Command (3, arrows); their
+    /// key_up is rewritten too.
+    chord_down: Vec<Key>,
 }
 
 impl Engine {
@@ -430,7 +440,7 @@ impl Engine {
             cfg,
             control_down: None,
             switcher: None,
-            digit3_down: false,
+            chord_down: Vec::new(),
         }
     }
 
@@ -451,7 +461,10 @@ impl Engine {
 
     /// Process one input event into zero or more actions, in order.
     pub fn handle(&mut self, ev: Event) -> Vec<Action> {
-        if !self.cfg.control_tab_to_command_tab && !self.cfg.control_3_to_command_3 {
+        if !self.cfg.control_tab_to_command_tab
+            && !self.cfg.control_3_to_command_3
+            && !self.cfg.control_arrows_to_command_arrows
+        {
             return vec![Action::Pass(ev)];
         }
         match ev.phase {
@@ -492,7 +505,15 @@ impl Engine {
 
         if self.cfg.control_3_to_command_3 && ev.key == DIGIT_3 && is_control_only(ev.flags) {
             let side = self.control_down.unwrap_or(Side::Left);
-            return self.control_3_down(side, ev);
+            return self.control_chord_down(side, ev);
+        }
+
+        if self.cfg.control_arrows_to_command_arrows
+            && is_arrow(ev.key)
+            && is_control_only(ev.flags)
+        {
+            let side = self.control_down.unwrap_or(Side::Left);
+            return self.control_chord_down(side, ev);
         }
 
         vec![Action::Pass(ev)]
@@ -532,9 +553,9 @@ impl Engine {
             return self.rewrite_while_switcher(side, ev);
         }
 
-        if self.digit3_down && ev.key == DIGIT_3 {
-            // Matching up for a remapped 3: present it with Command, not Control.
-            self.digit3_down = false;
+        if let Some(i) = self.chord_down.iter().position(|k| *k == ev.key) {
+            // Matching up for a remapped key: present it with Command, not Control.
+            self.chord_down.swap_remove(i);
             let mut out = ev;
             out.flags = ev.flags.control_to_command();
             return vec![Action::Suppress, Action::Post(out)];
@@ -630,13 +651,15 @@ impl Engine {
         ]
     }
 
-    /// Control+3 down: drop it, retract Control, Command down, 3 with Command,
-    /// Command up, then put Control back down because the physical key is
-    /// still held. Net modifier state after the burst equals the state before
+    /// Control+3 or Control+arrow down: drop it, retract Control, Command
+    /// down, the key with Command, Command up, then put Control back down
+    /// because the physical key is still held. Net modifier state after the burst equals the state before
     /// it, so nothing sticks whether Control is released next or held for
     /// another key (autorepeat runs the same burst again).
-    fn control_3_down(&mut self, side: Side, ev: Event) -> Vec<Action> {
-        self.digit3_down = true;
+    fn control_chord_down(&mut self, side: Side, ev: Event) -> Vec<Action> {
+        if !self.chord_down.contains(&ev.key) {
+            self.chord_down.push(ev.key);
+        }
         let rest = Flags::empty()
             .with_shift(ev.flags.shift)
             .with_option(ev.flags.option)
@@ -656,7 +679,7 @@ impl Engine {
             }),
             Action::Post(Event {
                 phase: Phase::KeyDown,
-                key: DIGIT_3,
+                key: ev.key,
                 flags: cmd,
             }),
             Action::Post(Event {
@@ -692,8 +715,12 @@ fn is_control_only(f: Flags) -> bool {
     f.control && !f.command && !f.shift && !f.option
 }
 
-fn is_switcher_nav(key: Key) -> bool {
+fn is_arrow(key: Key) -> bool {
     matches!(key, Key::Left | Key::Right | Key::Up | Key::Down)
+}
+
+fn is_switcher_nav(key: Key) -> bool {
+    is_arrow(key)
 }
 
 /// Apply a sequence of input events; return the flat action transcript.
