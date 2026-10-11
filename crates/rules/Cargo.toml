@@ -1,0 +1,12 @@
+[package]
+name = "keytap-rules"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Pure keyboard remap state machine for keytap"
+publish = false
+
+[lib]
+name = "keytap_rules"
+path = "src/lib.rs"
