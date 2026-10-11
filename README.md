@@ -1,0 +1,144 @@
+# keytap
+
+Driverless macOS key remapper. A CoreGraphics event tap rewrites keystrokes;
+no Karabiner driver, no system extension, no reboot loop.
+
+## Problem
+
+With the macOS Modifier Keys swap (System Settings → Keyboard → Modifier Keys:
+Control and Command swapped on both sides), the physical Command key emits
+Control. Physical Command+Tab therefore arrives as Control+Tab and the app
+switcher does not open. Karabiner-Elements can fix that, but its DriverKit
+virtual keyboard is fragile (`virtual_hid_keyboard is not ready`).
+
+## Design
+
+**Keep the macOS swap ON.** keytap does not undo it. It only rewrites the
+chords that break:
+
+- Control+Tab → Command+Tab
+- Control+Shift+Tab → Command+Shift+Tab
+
+### Held-modifier session
+
+The app switcher stays open while Command is held. After keytap remaps the
+first Control+Tab it enters a short session:
+
+1. Suppress the Tab.
+2. Post Control key-up (retract the Control the OS already saw).
+3. Post Command key-down (present Command as held).
+4. Post Tab key-down with the Command flag (and Shift if present).
+5. While that Control stays physically held: rewrite later Tab / arrow /
+   FlagsChanged events so they show Command instead of Control.
+6. On Control key-up (or FlagsChanged that clears Control): suppress it and
+   post Command key-up so the switcher selects and dismisses.
+
+Plain Control without Tab is untouched. Control+C and friends pass through.
+No sticky Command is left behind (see fixtures).
+
+### Event tap
+
+- `CGEventTapCreate` at `kCGSessionEventTap`, `kCGHeadInsertEventTap`,
+  keyDown / keyUp / flagsChanged
+- Callback kept small: parse → `keytap_rules::Engine::handle` → pass / suppress / post
+- On `kCGEventTapDisabledByTimeout` or `...UserInput`, re-enable the tap
+- Hand-written `extern "C"` to CoreGraphics, CoreFoundation, ApplicationServices
+  (no `-sys` crates, no objc2, no C/C++ in tree)
+- Engine state lives in a `Box` owned by `main`; the callback gets a raw pointer.
+  The run loop is single-threaded, so no locks, atomics, or lazy globals
+
+### Config
+
+Hand-parsed `key = value` file (no serde, no RON). RON was considered; a four-line
+boolean file does not justify a parser crate.
+
+Path order:
+
+1. `KEYTAP_CONFIG`
+2. `~/Library/Application Support/keytap/config`
+
+```
+# keytap config
+control_tab_to_command_tab = true
+```
+
+## Layout
+
+```
+crates/rules      pure state machine (no I/O, no unsafe)
+crates/keytap     daemon binary (event tap + config)
+crates/fixtures   fixture runner
+fixtures/cases    event-sequence transcripts
+scripts/          bun install/uninstall for launchd
+packaging/        launchd plist template (placeholders only)
+UI.md             design for an optional Tauri/izumo UI
+```
+
+## Build and gate
+
+```
+cargo build --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+cargo run -p fixtures -- check
+```
+
+No unit tests. Behaviour is proven by fixtures (`cargo run -p fixtures -- regen`
+to refresh expected actions after an intentional rule change).
+
+No `Cargo.lock` is committed (same policy as chuzz).
+
+## Run (manual)
+
+Do not start the tap while you are mid-typing if you are unsure of the build.
+`--print-config` is always safe. `--dry-run` creates a tap but never suppresses
+or rewrites; it only logs the actions that would fire (still needs Accessibility).
+
+```
+cargo build -p keytap --release
+./target/release/keytap --print-config
+./target/release/keytap --write-config
+./target/release/keytap                # real tap; grant Accessibility when prompted
+```
+
+Grant Accessibility to the binary (or the terminal) under
+System Settings → Privacy & Security → Accessibility.
+
+## Login item
+
+```
+cargo build -p keytap --release
+bun scripts/install.bun.ts install
+bun scripts/install.bun.ts uninstall
+```
+
+The plist template in `packaging/launchd/` uses `@KEYTAP_BIN@` / `@KEYTAP_LOG@`.
+The bun script fills them at install time into `~/Library/LaunchAgents/dev.keytap.plist`.
+
+## macOS swap
+
+Leave the System Settings Control ↔ Command swap enabled. keytap assumes that
+layout. If you turn the swap off, Control+Tab will start opening the switcher
+(because keytap will turn real Control+Tab into Command+Tab), which is probably
+not what you want.
+
+## Risks
+
+- **Secure Input** (password fields, some sudo prompts) blocks event taps. Keys
+  pass through unchanged until Secure Input ends; the tap stays alive.
+- **App switcher quirks.** The synthetic Command key-down/up path matches what
+  other remappers do, but has not been verified on this machine yet.
+- **Accessibility resets** after some OS updates; the daemon will fail to create
+  a tap and print the Settings path.
+- **Two remappers at once.** Disable Karabiner (or at least its complex
+  modifications) so it does not fight keytap.
+- **PC-style copy/paste** (Control+C → Command+C under the swap) is out of
+  scope for v1; only Tab is remapped.
+
+## Unverified
+
+- Real Control+Tab → app switcher open / cycle / select on macOS 26.5
+- Behaviour inside Secure Input fields
+- launchd KeepAlive across logout/login
+- Right-Control chord on a keyboard that has one
+- Whether `kCGSessionEventTap` vs `kCGHIDEventTap` matters for the Dock switcher
