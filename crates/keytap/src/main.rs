@@ -20,6 +20,7 @@ Usage:
   keytap --print-config  print resolved config path and contents
   keytap --write-config  write the default config if missing
   keytap --dry-run       create the tap and log actions (still needs Accessibility)
+  keytap --check-ffi     call AXIsProcessTrustedWithOptions(prompt=false); print result
   keytap --help
 
 Environment:
@@ -30,36 +31,33 @@ Environment:
 }
 
 fn check_accessibility(prompt: bool) -> bool {
-    unsafe {
-        if prompt {
-            let opts = ffi::ax_prompt_options();
-            let ok = ffi::AXIsProcessTrustedWithOptions(opts);
-            if !opts.is_null() {
-                ffi::CFRelease(opts as ffi::CFTypeRef);
-            }
-            ok
-        } else {
-            // Pass null options: check without prompting.
-            ffi::AXIsProcessTrustedWithOptions(core::ptr::null())
-        }
-    }
+    unsafe { ffi::ax_is_process_trusted(prompt) }
 }
 
 fn main() -> ExitCode {
     let mut print_config = false;
     let mut write_config = false;
     let mut dry_run = false;
+    let mut check_ffi = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--help" | "-h" => usage(),
             "--print-config" => print_config = true,
             "--write-config" => write_config = true,
             "--dry-run" => dry_run = true,
+            "--check-ffi" => check_ffi = true,
             other => {
                 eprintln!("unknown argument `{other}`");
                 usage();
             }
         }
+    }
+
+    if check_ffi {
+        // Exercises the options dictionary path with prompt=false. Must not crash.
+        let trusted = unsafe { ffi::ax_is_process_trusted(false) };
+        println!("trusted {}", if trusted { "true" } else { "false" });
+        return ExitCode::SUCCESS;
     }
 
     let (path, cfg) = match config::load_or_default() {

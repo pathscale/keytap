@@ -97,6 +97,7 @@ or rewrites; it only logs the actions that would fire (still needs Accessibility
 ```
 cargo build -p keytap --release
 ./target/release/keytap --print-config
+./target/release/keytap --check-ffi     # AX options dict; must print trusted true/false
 ./target/release/keytap --write-config
 ./target/release/keytap                # real tap; grant Accessibility when prompted
 ```

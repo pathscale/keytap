@@ -172,7 +172,7 @@ fn apply_actions(state: &mut TapState, original: CGEventRef, actions: &[Action])
     pass_back
 }
 
-pub unsafe extern "C-unwind" fn tap_callback(
+pub unsafe extern "C" fn tap_callback(
     _proxy: CGEventTapProxy,
     etype: CGEventType,
     event: CGEventRef,
