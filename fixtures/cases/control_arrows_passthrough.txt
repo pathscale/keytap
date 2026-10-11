@@ -1,19 +1,16 @@
-# Only Control alone is remapped. Control+Shift, Control+Option,
+# Only Control (optionally with Shift) is remapped. Control+Option and
 # Control+Command arrows, Shift+arrow, and plain arrows pass through untouched.
+# Control+Shift+arrow is covered by control_shift_arrows.txt.
 > key_down control_l control
 < pass key_down control_l control
-> key_down shift_l control|shift
-< pass key_down shift_l control|shift
-> key_down left control|shift
-< pass key_down left control|shift
-> key_up left control|shift
-< pass key_up left control|shift
-> key_up shift_l control
-< pass key_up shift_l control
 > key_down right control|option
 < pass key_down right control|option
 > key_up right control|option
 < pass key_up right control|option
+> key_down left control|shift|option
+< pass key_down left control|shift|option
+> key_up left control|shift|option
+< pass key_up left control|shift|option
 > key_down up control|command
 < pass key_down up control|command
 > key_up up control|command

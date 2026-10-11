@@ -1,0 +1,74 @@
+# Control+Shift+arrow (physical Command+Shift+arrow) reaches apps as
+# Command+Shift+arrow: select to line start/end, document top/bottom. Same
+# burst as Control+arrow with Shift carried on every posted event; the Shift
+# key itself passes untouched. All four arrows, autorepeat, and releasing
+# Control before the arrow (arrow up keeps Shift, no stuck Control/Command).
+> key_down control_l control
+< pass key_down control_l control
+> key_down shift_l control|shift
+< pass key_down shift_l control|shift
+> key_down left control|shift
+< suppress
+< post key_up control_l shift
+< post key_down command_l command|shift
+< post key_down left command|shift
+< post key_up command_l shift
+< post key_down control_l control|shift
+> key_up left control|shift
+< suppress
+< post key_up left command|shift
+> key_down right control|shift
+< suppress
+< post key_up control_l shift
+< post key_down command_l command|shift
+< post key_down right command|shift
+< post key_up command_l shift
+< post key_down control_l control|shift
+> key_up right control|shift
+< suppress
+< post key_up right command|shift
+> key_down up control|shift
+< suppress
+< post key_up control_l shift
+< post key_down command_l command|shift
+< post key_down up command|shift
+< post key_up command_l shift
+< post key_down control_l control|shift
+> key_up up control|shift
+< suppress
+< post key_up up command|shift
+> key_down down control|shift
+< suppress
+< post key_up control_l shift
+< post key_down command_l command|shift
+< post key_down down command|shift
+< post key_up command_l shift
+< post key_down control_l control|shift
+> key_down down control|shift
+< suppress
+< post key_up control_l shift
+< post key_down command_l command|shift
+< post key_down down command|shift
+< post key_up command_l shift
+< post key_down control_l control|shift
+> key_up down control|shift
+< suppress
+< post key_up down command|shift
+> key_down left control|shift
+< suppress
+< post key_up control_l shift
+< post key_down command_l command|shift
+< post key_down left command|shift
+< post key_up command_l shift
+< post key_down control_l control|shift
+> key_up control_l shift
+< pass key_up control_l shift
+> key_up left shift
+< suppress
+< post key_up left shift
+> key_down right shift
+< pass key_down right shift
+> key_up right shift
+< pass key_up right shift
+> key_up shift_l -
+< pass key_up shift_l -

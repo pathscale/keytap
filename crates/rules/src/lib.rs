@@ -372,8 +372,9 @@ pub struct Config {
     /// digit 3, only with Control alone; Shift/Option combos pass through.
     pub control_3_to_command_3: bool,
     /// Control+Left/Right/Up/Down -> Command+arrow (physical Command+arrow
-    /// under the OS swap: line start/end, document top/bottom). Control alone
-    /// only; Shift/Option/Command combos pass through.
+    /// under the OS swap: line start/end, document top/bottom). Shift is kept,
+    /// so Control+Shift+arrow becomes Command+Shift+arrow (select to line
+    /// start/end, document top/bottom). Option/Command combos pass through.
     pub control_arrows_to_command_arrows: bool,
     /// Control+left click -> Command+left click (physical Command+click under
     /// the OS swap: Chrome opens the link in a new tab instead of a context
@@ -574,7 +575,7 @@ impl Engine {
 
         if self.cfg.control_arrows_to_command_arrows
             && is_arrow(ev.key)
-            && is_control_only(ev.flags)
+            && is_control_maybe_shift(ev.flags)
         {
             let side = self.control_down.unwrap_or(Side::Left);
             return self.control_chord_down(side, ev);
@@ -777,6 +778,11 @@ const DIGIT_3: Key = Key::Other(0x14);
 /// Control is the only chord modifier (caps lock is ignored).
 fn is_control_only(f: Flags) -> bool {
     f.control && !f.command && !f.shift && !f.option
+}
+
+/// Control with optional Shift; no Command or Option (caps lock is ignored).
+fn is_control_maybe_shift(f: Flags) -> bool {
+    f.control && !f.command && !f.option
 }
 
 fn is_arrow(key: Key) -> bool {

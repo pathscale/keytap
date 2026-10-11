@@ -73,8 +73,11 @@ Shift/Option combos pass through. Control is restored afterwards while still hel
 
 `control_arrows_to_command_arrows`: physical Command+Left/Right/Up/Down
 (Control+arrow after the OS swap) reaches apps as Command+arrow: line start/end,
-document top/bottom. Same burst as Control+3, left or right Control. Only with
-Control alone; Shift/Option/Command combos and plain arrows pass through.
+document top/bottom. Same burst as Control+3, left or right Control. Shift is
+kept: physical Command+Shift+arrow (Control+Shift+arrow after the swap) reaches
+apps as Command+Shift+arrow, selecting to line start/end or document
+top/bottom; the Shift key itself is never touched. Option/Command combos,
+Shift+arrow without Control, and plain arrows pass through.
 
 `control_click_to_command_click`: physical Command+click (Control+left click
 after the OS swap, which macOS would turn into a context menu) reaches apps as
