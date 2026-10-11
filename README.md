@@ -69,8 +69,8 @@ crates/rules      pure state machine (no I/O, no unsafe)
 crates/keytap     daemon binary (event tap + config)
 crates/fixtures   fixture runner
 fixtures/cases    event-sequence transcripts
-scripts/          bun install/uninstall for launchd
-packaging/        launchd plist template (placeholders only)
+scripts/          bun bundle + install/uninstall for launchd
+packaging/        Info.plist + launchd plist template (placeholders only)
 UI.md             design for an optional Tauri/izumo UI
 ```
 
@@ -88,33 +88,58 @@ to refresh expected actions after an intentional rule change).
 
 No `Cargo.lock` is committed (same policy as chuzz).
 
+## Bundle and Accessibility (TCC)
+
+macOS keys Accessibility grants to the **signed code identity**. An unbundled
+`target/debug/keytap` run from a terminal inherits the terminal's identity, so
+toggling the terminal (or a one-off binary path) does not trust Keytap. Package
+it as `Keytap.app` with a stable identifier (`dev.keytap`):
+
+```
+bun scripts/bundle.bun.ts
+codesign -dvv target/Keytap.app          # Identifier=dev.keytap
+target/Keytap.app/Contents/MacOS/keytap --check-ffi
+open target/Keytap.app                   # registers Keytap in Accessibility
+```
+
+Then: System Settings -> Privacy & Security -> Accessibility -> enable **Keytap**.
+Verify with:
+
+```
+target/Keytap.app/Contents/MacOS/keytap --check-ffi   # expect: trusted true
+```
+
+`security find-identity -p codesigning -v` listed no Apple Development identity
+on the build machine, so the bundle is ad-hoc signed (`codesign --sign -`) with
+`--identifier dev.keytap`. That is enough for a stable local TCC identity. Prefer
+an Apple Development identity when one exists (the bundle script picks it
+automatically); use Developer ID only if you distribute off this Mac.
+
 ## Run (manual)
 
 Do not start the tap while you are mid-typing if you are unsure of the build.
-`--print-config` is always safe. `--dry-run` creates a tap but never suppresses
-or rewrites; it only logs the actions that would fire (still needs Accessibility).
+`--print-config` is always safe. `--check-ffi` is safe. `--dry-run` creates a
+tap but never suppresses or rewrites (still needs Accessibility).
 
 ```
-cargo build -p keytap --release
-./target/release/keytap --print-config
-./target/release/keytap --check-ffi     # AX options dict; must print trusted true/false
-./target/release/keytap --write-config
-./target/release/keytap                # real tap; grant Accessibility when prompted
+bun scripts/bundle.bun.ts
+target/Keytap.app/Contents/MacOS/keytap --print-config
+target/Keytap.app/Contents/MacOS/keytap --check-ffi
+target/Keytap.app/Contents/MacOS/keytap --write-config
+open target/Keytap.app
 ```
-
-Grant Accessibility to the binary (or the terminal) under
-System Settings → Privacy & Security → Accessibility.
 
 ## Login item
 
 ```
-cargo build -p keytap --release
+bun scripts/bundle.bun.ts
 bun scripts/install.bun.ts install
 bun scripts/install.bun.ts uninstall
 ```
 
-The plist template in `packaging/launchd/` uses `@KEYTAP_BIN@` / `@KEYTAP_LOG@`.
-The bun script fills them at install time into `~/Library/LaunchAgents/dev.keytap.plist`.
+The agent runs `Keytap.app/Contents/MacOS/keytap` (`ThrottleInterval` 10). The
+plist template uses `@KEYTAP_BIN@` / `@KEYTAP_LOG@`; the bun script fills them
+into `~/Library/LaunchAgents/dev.keytap.plist` at install time.
 
 ## macOS swap
 
