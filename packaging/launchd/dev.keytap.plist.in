@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template only. Paths are filled at install time by scripts/install.bun.ts.
+  Placeholders: @KEYTAP_BIN@  @KEYTAP_LOG@
+  Do not commit a rendered plist with machine-local paths.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.keytap</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@KEYTAP_BIN@</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>@KEYTAP_LOG@</string>
+  <key>StandardErrorPath</key>
+  <string>@KEYTAP_LOG@</string>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+</dict>
+</plist>
