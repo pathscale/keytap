@@ -1,0 +1,15 @@
+[package]
+name = "keytap"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Driverless macOS key remapper via CoreGraphics event tap"
+publish = false
+
+[[bin]]
+name = "keytap"
+path = "src/main.rs"
+
+[dependencies]
+keytap-rules = { workspace = true }
