@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.91"
 license = "MIT"
-repository = "https://github.com/local/keytap"
+repository = "https://github.com/pathscale/keytap"
 
 [workspace.dependencies]
 keytap-rules = { path = "crates/rules" }
