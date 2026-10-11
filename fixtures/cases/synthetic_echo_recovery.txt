@@ -1,0 +1,24 @@
+# Simulates tap re-entry: synthetic Control-up arrives while switcher is active
+# and ends the session. Physical Control is still held; the next Tab with the
+# control flag must start a new session (missed-keydown path).
+> flags control_l control
+< pass flags control_l control
+> key_down tab control
+< suppress
+< post key_up control_l -
+< post key_down command_l command
+< post key_down tab command
+> key_up control_l -
+< suppress
+< post key_up command_l -
+> key_down tab control
+< suppress
+< post key_up control_l -
+< post key_down command_l command
+< post key_down tab command
+> key_up tab control
+< suppress
+< post key_up tab command
+> flags control_l -
+< suppress
+< post key_up command_l -

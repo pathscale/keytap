@@ -25,6 +25,7 @@ pub enum Key {
     Right,
     Up,
     Down,
+    Escape,
     Other(u16),
 }
 
@@ -42,6 +43,7 @@ impl Key {
             0x7C => Key::Right,
             0x7E => Key::Up,
             0x7D => Key::Down,
+            0x35 => Key::Escape,
             n => Key::Other(n),
         }
     }
@@ -59,6 +61,7 @@ impl Key {
             Key::Right => 0x7C,
             Key::Up => 0x7E,
             Key::Down => 0x7D,
+            Key::Escape => 0x35,
             Key::Other(n) => n,
         }
     }
@@ -76,6 +79,7 @@ impl Key {
             Key::Right => "right",
             Key::Up => "up",
             Key::Down => "down",
+            Key::Escape => "escape",
             Key::Other(_) => "other",
         }
     }
@@ -93,6 +97,7 @@ impl Key {
             "right" => Key::Right,
             "up" => Key::Up,
             "down" => Key::Down,
+            "escape" => Key::Escape,
             _ => {
                 if let Some(rest) = name.strip_prefix("other:") {
                     return rest.parse().ok().map(Key::Other);
@@ -420,6 +425,17 @@ impl Engine {
 
     pub fn config(&self) -> &Config {
         &self.cfg
+    }
+
+    /// Short label for debug logs: idle | control_down | switcher.
+    pub fn debug_state(&self) -> &'static str {
+        if self.switcher.is_some() {
+            "switcher"
+        } else if self.control_down.is_some() {
+            "control_down"
+        } else {
+            "idle"
+        }
     }
 
     /// Process one input event into zero or more actions, in order.
