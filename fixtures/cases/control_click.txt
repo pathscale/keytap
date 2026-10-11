@@ -1,0 +1,11 @@
+# Control+left click (physical Command+click under the OS swap) reaches apps
+# as Command+click, so Chrome opens the link in a new background tab instead
+# of a context menu. Down and up are rewritten alike; Control key passes.
+> key_down control_l control
+< pass key_down control_l control
+> mouse_down mouse_left control
+< pass mouse_down mouse_left command
+> mouse_up mouse_left control
+< pass mouse_up mouse_left command
+> key_up control_l -
+< pass key_up control_l -

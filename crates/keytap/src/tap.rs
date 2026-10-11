@@ -42,7 +42,9 @@ fn debug_key(key: Key) -> String {
         | Key::Right
         | Key::Up
         | Key::Down
-        | Key::Escape => key.name().to_string(),
+        | Key::Escape
+        | Key::MouseLeft
+        | Key::MouseRight => key.name().to_string(),
         Key::Other(_) => "other".to_string(),
     }
 }
@@ -138,8 +140,18 @@ fn phase_from_cg(t: CGEventType) -> Option<Phase> {
         ffi::kCGEventKeyDown => Some(Phase::KeyDown),
         ffi::kCGEventKeyUp => Some(Phase::KeyUp),
         ffi::kCGEventFlagsChanged => Some(Phase::FlagsChanged),
+        ffi::kCGEventLeftMouseDown => Some(Phase::MouseDown),
+        ffi::kCGEventLeftMouseUp => Some(Phase::MouseUp),
+        ffi::kCGEventLeftMouseDragged => Some(Phase::MouseDragged),
         _ => None,
     }
+}
+
+fn is_mouse(phase: Phase) -> bool {
+    matches!(
+        phase,
+        Phase::MouseDown | Phase::MouseUp | Phase::MouseDragged
+    )
 }
 
 fn is_synthetic(event: CGEventRef) -> bool {
@@ -149,9 +161,17 @@ fn is_synthetic(event: CGEventRef) -> bool {
 fn event_from_cg(event: CGEventRef) -> Option<Event> {
     let t = unsafe { ffi::CGEventGetType(event) };
     let phase = phase_from_cg(t)?;
+    let flags = flags_from_cg(unsafe { ffi::CGEventGetFlags(event) });
+    if is_mouse(phase) {
+        // Only left-button types are in the mask.
+        return Some(Event {
+            phase,
+            key: Key::MouseLeft,
+            flags,
+        });
+    }
     let code =
         unsafe { ffi::CGEventGetIntegerValueField(event, ffi::kCGKeyboardEventKeycode) } as u16;
-    let flags = flags_from_cg(unsafe { ffi::CGEventGetFlags(event) });
     Some(Event {
         phase,
         key: Key::from_code(code),
@@ -167,6 +187,11 @@ fn post_event(state: &TapState, proxy: CGEventTapProxy, ev: &Event) {
     let key_down = match ev.phase {
         Phase::KeyDown => true,
         Phase::KeyUp | Phase::FlagsChanged => false,
+        Phase::MouseDown | Phase::MouseUp | Phase::MouseDragged => {
+            // The engine only rewrites mouse events in place; never synthesizes them.
+            eprintln!("keytap: refusing to post a mouse event");
+            return;
+        }
     };
     let source = state
         .source
@@ -221,11 +246,15 @@ fn apply_actions(
             }
             Action::Pass(ev) => {
                 unsafe {
-                    ffi::CGEventSetIntegerValueField(
-                        original,
-                        ffi::kCGKeyboardEventKeycode,
-                        i64::from(ev.key.code()),
-                    );
+                    // Mouse events keep their own fields (location, click
+                    // count, button); only the flags change.
+                    if !is_mouse(ev.phase) {
+                        ffi::CGEventSetIntegerValueField(
+                            original,
+                            ffi::kCGKeyboardEventKeycode,
+                            i64::from(ev.key.code()),
+                        );
+                    }
                     let base = ffi::CGEventGetFlags(original);
                     ffi::CGEventSetFlags(original, flags_to_cg(ev.flags, base));
                 }
@@ -308,10 +337,19 @@ pub unsafe extern "C" fn tap_callback(
     apply_actions(state, proxy, event, &actions)
 }
 
-pub fn event_mask() -> CGEventMask {
-    ffi::cg_event_mask_bit(ffi::kCGEventKeyDown)
+/// Keyboard events always; left button down/up/dragged only when the click
+/// rule is on. Mouse moves and other buttons are never tapped.
+pub fn event_mask(control_click: bool) -> CGEventMask {
+    let keys = ffi::cg_event_mask_bit(ffi::kCGEventKeyDown)
         | ffi::cg_event_mask_bit(ffi::kCGEventKeyUp)
-        | ffi::cg_event_mask_bit(ffi::kCGEventFlagsChanged)
+        | ffi::cg_event_mask_bit(ffi::kCGEventFlagsChanged);
+    if control_click {
+        keys | ffi::cg_event_mask_bit(ffi::kCGEventLeftMouseDown)
+            | ffi::cg_event_mask_bit(ffi::kCGEventLeftMouseUp)
+            | ffi::cg_event_mask_bit(ffi::kCGEventLeftMouseDragged)
+    } else {
+        keys
+    }
 }
 
 pub struct Tap {
@@ -324,6 +362,7 @@ impl Tap {
     pub fn create(engine: Engine, dry_run: bool) -> Result<Self, String> {
         let source = CGEventSource::new_private();
         let debug = debug_from_env();
+        let mask = event_mask(engine.config().control_click_to_command_click);
         if debug {
             eprintln!("keytap: KEYTAP_DEBUG=1 (modifier/tab/arrow/escape only)");
         }
@@ -341,7 +380,7 @@ impl Tap {
                 ffi::kCGSessionEventTap,
                 ffi::kCGHeadInsertEventTap,
                 ffi::kCGEventTapOptionDefault,
-                event_mask(),
+                mask,
                 Some(tap_callback),
                 state_ptr as *mut c_void,
             )

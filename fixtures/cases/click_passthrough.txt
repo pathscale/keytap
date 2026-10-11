@@ -1,0 +1,24 @@
+# Plain click, Command+click (physical Control+click under the swap), and
+# Option+click pass through unchanged, and so do Control+Command clicks.
+> mouse_down mouse_left -
+< pass mouse_down mouse_left -
+> mouse_up mouse_left -
+< pass mouse_up mouse_left -
+> key_down command_l command
+< pass key_down command_l command
+> mouse_down mouse_left command
+< pass mouse_down mouse_left command
+> mouse_up mouse_left command
+< pass mouse_up mouse_left command
+> key_up command_l -
+< pass key_up command_l -
+> mouse_down mouse_left option
+< pass mouse_down mouse_left option
+> mouse_dragged mouse_left option
+< pass mouse_dragged mouse_left option
+> mouse_up mouse_left option
+< pass mouse_up mouse_left option
+> mouse_down mouse_left control|command
+< pass mouse_down mouse_left control|command
+> mouse_up mouse_left control|command
+< pass mouse_up mouse_left control|command

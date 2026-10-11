@@ -1,0 +1,12 @@
+# Right button events are never rewritten, with or without Control. (The tap
+# mask does not even include them; this pins the engine side.)
+> mouse_down mouse_right -
+< pass mouse_down mouse_right -
+> mouse_up mouse_right -
+< pass mouse_up mouse_right -
+> mouse_down mouse_right control
+< pass mouse_down mouse_right control
+> mouse_dragged mouse_right control
+< pass mouse_dragged mouse_right control
+> mouse_up mouse_right control
+< pass mouse_up mouse_right control

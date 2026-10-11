@@ -39,7 +39,9 @@ No sticky Command is left behind (see fixtures).
 ### Event tap
 
 - `CGEventTapCreate` at `kCGSessionEventTap`, `kCGHeadInsertEventTap`,
-  keyDown / keyUp / flagsChanged
+  keyDown / keyUp / flagsChanged, plus leftMouseDown / leftMouseUp /
+  leftMouseDragged when `control_click_to_command_click` is on (never mouse
+  moves or other buttons)
 - Callback kept small: parse → `keytap_rules::Engine::handle` → pass / suppress / post
 - On `kCGEventTapDisabledByTimeout` or `...UserInput`, re-enable the tap
 - Hand-written `extern "C"` to CoreGraphics, CoreFoundation, ApplicationServices
@@ -62,6 +64,7 @@ Path order:
 control_tab_to_command_tab = true
 control_3_to_command_3 = true
 control_arrows_to_command_arrows = true
+control_click_to_command_click = true
 ```
 
 `control_3_to_command_3`: physical Command+3 (Control+3 after the OS swap) reaches
@@ -72,6 +75,18 @@ Shift/Option combos pass through. Control is restored afterwards while still hel
 (Control+arrow after the OS swap) reaches apps as Command+arrow: line start/end,
 document top/bottom. Same burst as Control+3, left or right Control. Only with
 Control alone; Shift/Option/Command combos and plain arrows pass through.
+
+`control_click_to_command_click`: physical Command+click (Control+left click
+after the OS swap, which macOS would turn into a context menu) reaches apps as
+Command+click, so Chrome opens the link in a new background tab;
+Command+Shift+click opens a foreground tab. The tap sees the left mouse down
+before AppKit converts Control+click, and only rewrites its flags (Control to
+Command; Shift, Option, Caps Lock kept). The mouse down decides; its drags and
+mouse up follow that decision, so a click is never half rewritten. Clicks that
+already carry Command, plain clicks, Option clicks, and every right click pass
+untouched. With the swap, physical Control arrives as Command, so the native
+Control+click context menu is not reachable from the keyboard any more: use a
+right click (or two-finger click) instead.
 
 ## Layout
 

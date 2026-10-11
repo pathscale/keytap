@@ -1,0 +1,19 @@
+# Drags and the up follow the decision made at the down: Control pressed
+# after a plain down stays Control (no half-rewritten click), and the next
+# Control click is rewritten again. A stray up with no down passes as is.
+> mouse_down mouse_left -
+< pass mouse_down mouse_left -
+> key_down control_l control
+< pass key_down control_l control
+> mouse_dragged mouse_left control
+< pass mouse_dragged mouse_left control
+> mouse_up mouse_left control
+< pass mouse_up mouse_left control
+> mouse_down mouse_left control
+< pass mouse_down mouse_left command
+> mouse_up mouse_left control
+< pass mouse_up mouse_left command
+> key_up control_l -
+< pass key_up control_l -
+> mouse_up mouse_left control
+< pass mouse_up mouse_left control

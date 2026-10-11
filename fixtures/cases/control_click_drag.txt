@@ -1,0 +1,16 @@
+# A Control drag is rewritten at the down, every drag, and the up. Releasing
+# Control mid-drag keeps the click consistent (no Control comes back).
+> key_down control_l control
+< pass key_down control_l control
+> mouse_down mouse_left control
+< pass mouse_down mouse_left command
+> mouse_dragged mouse_left control
+< pass mouse_dragged mouse_left command
+> mouse_dragged mouse_left control|shift
+< pass mouse_dragged mouse_left command|shift
+> key_up control_l -
+< pass key_up control_l -
+> mouse_dragged mouse_left -
+< pass mouse_dragged mouse_left -
+> mouse_up mouse_left -
+< pass mouse_up mouse_left -

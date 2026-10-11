@@ -94,6 +94,9 @@ pub const NULL: *mut c_void = core::ptr::null_mut();
 
 // CGEventType
 pub const kCGEventNull: CGEventType = 0;
+pub const kCGEventLeftMouseDown: CGEventType = 1;
+pub const kCGEventLeftMouseUp: CGEventType = 2;
+pub const kCGEventLeftMouseDragged: CGEventType = 6;
 pub const kCGEventKeyDown: CGEventType = 10;
 pub const kCGEventKeyUp: CGEventType = 11;
 pub const kCGEventFlagsChanged: CGEventType = 12;

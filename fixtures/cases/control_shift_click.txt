@@ -1,0 +1,14 @@
+# Control+Shift+click (physical Command+Shift+click) becomes Command+Shift+click:
+# Chrome opens the link in a new foreground tab. Shift and Caps Lock kept.
+> key_down control_l control
+< pass key_down control_l control
+> key_down shift_l control|shift
+< pass key_down shift_l control|shift
+> mouse_down mouse_left control|shift|caps
+< pass mouse_down mouse_left command|shift|caps
+> mouse_up mouse_left control|shift|caps
+< pass mouse_up mouse_left command|shift|caps
+> key_up shift_l control
+< pass key_up shift_l control
+> key_up control_l -
+< pass key_up control_l -

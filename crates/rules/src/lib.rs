@@ -26,6 +26,10 @@ pub enum Key {
     Up,
     Down,
     Escape,
+    /// Left mouse button (mouse phases only; never a keyboard keycode).
+    MouseLeft,
+    /// Right mouse button (mouse phases only; never a keyboard keycode).
+    MouseRight,
     Other(u16),
 }
 
@@ -62,6 +66,9 @@ impl Key {
             Key::Up => 0x7E,
             Key::Down => 0x7D,
             Key::Escape => 0x35,
+            // Not keyboard keys: the daemon never writes these as a keycode.
+            Key::MouseLeft => 0xFF00,
+            Key::MouseRight => 0xFF01,
             Key::Other(n) => n,
         }
     }
@@ -80,6 +87,8 @@ impl Key {
             Key::Up => "up",
             Key::Down => "down",
             Key::Escape => "escape",
+            Key::MouseLeft => "mouse_left",
+            Key::MouseRight => "mouse_right",
             Key::Other(_) => "other",
         }
     }
@@ -98,6 +107,8 @@ impl Key {
             "up" => Key::Up,
             "down" => Key::Down,
             "escape" => Key::Escape,
+            "mouse_left" => Key::MouseLeft,
+            "mouse_right" => Key::MouseRight,
             _ => {
                 if let Some(rest) = name.strip_prefix("other:") {
                     return rest.parse().ok().map(Key::Other);
@@ -217,6 +228,9 @@ pub enum Phase {
     KeyDown,
     KeyUp,
     FlagsChanged,
+    MouseDown,
+    MouseUp,
+    MouseDragged,
 }
 
 impl Phase {
@@ -225,6 +239,9 @@ impl Phase {
             Phase::KeyDown => "key_down",
             Phase::KeyUp => "key_up",
             Phase::FlagsChanged => "flags",
+            Phase::MouseDown => "mouse_down",
+            Phase::MouseUp => "mouse_up",
+            Phase::MouseDragged => "mouse_dragged",
         }
     }
 
@@ -233,6 +250,9 @@ impl Phase {
             "key_down" => Some(Phase::KeyDown),
             "key_up" => Some(Phase::KeyUp),
             "flags" => Some(Phase::FlagsChanged),
+            "mouse_down" => Some(Phase::MouseDown),
+            "mouse_up" => Some(Phase::MouseUp),
+            "mouse_dragged" => Some(Phase::MouseDragged),
             _ => None,
         }
     }
@@ -355,6 +375,10 @@ pub struct Config {
     /// under the OS swap: line start/end, document top/bottom). Control alone
     /// only; Shift/Option/Command combos pass through.
     pub control_arrows_to_command_arrows: bool,
+    /// Control+left click -> Command+left click (physical Command+click under
+    /// the OS swap: Chrome opens the link in a new tab instead of a context
+    /// menu). The mouse down decides; its drags and up follow it.
+    pub control_click_to_command_click: bool,
 }
 
 impl Default for Config {
@@ -363,6 +387,7 @@ impl Default for Config {
             control_tab_to_command_tab: true,
             control_3_to_command_3: true,
             control_arrows_to_command_arrows: true,
+            control_click_to_command_click: true,
         }
     }
 }
@@ -391,6 +416,9 @@ impl Config {
                 "control_arrows_to_command_arrows" => {
                     cfg.control_arrows_to_command_arrows = parse_bool(v, idx + 1)?;
                 }
+                "control_click_to_command_click" => {
+                    cfg.control_click_to_command_click = parse_bool(v, idx + 1)?;
+                }
                 other => return Err(format!("line {}: unknown key `{other}`", idx + 1)),
             }
         }
@@ -399,10 +427,11 @@ impl Config {
 
     pub fn render(&self) -> String {
         format!(
-            "# keytap config\ncontrol_tab_to_command_tab = {}\ncontrol_3_to_command_3 = {}\ncontrol_arrows_to_command_arrows = {}\n",
+            "# keytap config\ncontrol_tab_to_command_tab = {}\ncontrol_3_to_command_3 = {}\ncontrol_arrows_to_command_arrows = {}\ncontrol_click_to_command_click = {}\n",
             render_bool(self.control_tab_to_command_tab),
             render_bool(self.control_3_to_command_3),
             render_bool(self.control_arrows_to_command_arrows),
+            render_bool(self.control_click_to_command_click),
         )
     }
 }
@@ -432,6 +461,10 @@ pub struct Engine {
     /// Keys whose key_down was remapped Control -> Command (3, arrows); their
     /// key_up is rewritten too.
     chord_down: Vec<Key>,
+    /// Left button held: Some(true) when its mouse_down was rewritten
+    /// Control -> Command, Some(false) when it passed unchanged. Drags and
+    /// the up follow the down so a click is never half rewritten.
+    left_click: Option<bool>,
 }
 
 impl Engine {
@@ -441,6 +474,7 @@ impl Engine {
             control_down: None,
             switcher: None,
             chord_down: Vec::new(),
+            left_click: None,
         }
     }
 
@@ -448,10 +482,12 @@ impl Engine {
         &self.cfg
     }
 
-    /// Short label for debug logs: idle | control_down | switcher.
+    /// Short label for debug logs: idle | control_down | switcher | command_click.
     pub fn debug_state(&self) -> &'static str {
         if self.switcher.is_some() {
             "switcher"
+        } else if self.left_click == Some(true) {
+            "command_click"
         } else if self.control_down.is_some() {
             "control_down"
         } else {
@@ -464,6 +500,7 @@ impl Engine {
         if !self.cfg.control_tab_to_command_tab
             && !self.cfg.control_3_to_command_3
             && !self.cfg.control_arrows_to_command_arrows
+            && !self.cfg.control_click_to_command_click
         {
             return vec![Action::Pass(ev)];
         }
@@ -471,7 +508,34 @@ impl Engine {
             Phase::KeyDown => self.on_key_down(ev),
             Phase::KeyUp => self.on_key_up(ev),
             Phase::FlagsChanged => self.on_flags(ev),
+            Phase::MouseDown | Phase::MouseUp | Phase::MouseDragged => self.on_mouse(ev),
         }
+    }
+
+    /// Left mouse down with Control and not Command becomes Command (Shift,
+    /// Option, Caps Lock kept), before AppKit can turn Control+click into a
+    /// context menu. Drags and the up follow the decision made at the down.
+    /// Other buttons pass untouched.
+    fn on_mouse(&mut self, ev: Event) -> Vec<Action> {
+        if ev.key != Key::MouseLeft {
+            return vec![Action::Pass(ev)];
+        }
+        let rewrite = match ev.phase {
+            Phase::MouseDown => {
+                let r = self.cfg.control_click_to_command_click
+                    && ev.flags.control
+                    && !ev.flags.command;
+                self.left_click = Some(r);
+                r
+            }
+            Phase::MouseUp => self.left_click.take() == Some(true),
+            _ => self.left_click == Some(true),
+        };
+        let mut out = ev;
+        if rewrite {
+            out.flags = ev.flags.control_to_command();
+        }
+        vec![Action::Pass(out)]
     }
 
     fn on_key_down(&mut self, ev: Event) -> Vec<Action> {
