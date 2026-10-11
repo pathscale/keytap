@@ -1,0 +1,18 @@
+# Control+Shift+Tab keeps shift and opens switcher reverse.
+> key_down control_l control
+< pass key_down control_l control
+> key_down shift_l control|shift
+< pass key_down shift_l control|shift
+> key_down tab control|shift
+< suppress
+< post key_up control_l shift
+< post key_down command_l command|shift
+< post key_down tab command|shift
+> key_up tab control|shift
+< suppress
+< post key_up tab command|shift
+> key_up control_l shift
+< suppress
+< post key_up command_l shift
+> key_up shift_l -
+< pass key_up shift_l -

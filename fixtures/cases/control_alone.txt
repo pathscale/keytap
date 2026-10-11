@@ -1,0 +1,5 @@
+# Plain Control down/up without Tab must not synthesize Command.
+> key_down control_l control
+< pass key_down control_l control
+> key_up control_l -
+< pass key_up control_l -

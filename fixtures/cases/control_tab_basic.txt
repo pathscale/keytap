@@ -1,0 +1,15 @@
+# Control+Tab opens switcher: retract Control, assert Command, Tab with Command.
+# Release Control ends session with Command up.
+> key_down control_l control
+< pass key_down control_l control
+> key_down tab control
+< suppress
+< post key_up control_l -
+< post key_down command_l command
+< post key_down tab command
+> key_up tab control
+< suppress
+< post key_up tab command
+> key_up control_l -
+< suppress
+< post key_up command_l -

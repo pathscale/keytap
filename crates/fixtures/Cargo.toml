@@ -1,0 +1,15 @@
+[package]
+name = "fixtures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Fixture runner for keytap-rules"
+publish = false
+
+[[bin]]
+name = "fixtures"
+path = "src/main.rs"
+
+[dependencies]
+keytap-rules = { workspace = true }
