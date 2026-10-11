@@ -60,7 +60,12 @@ Path order:
 ```
 # keytap config
 control_tab_to_command_tab = true
+control_3_to_command_3 = true
 ```
+
+`control_3_to_command_3`: physical Command+3 (Control+3 after the OS swap) reaches
+apps as Command+3. Only the digit 3 with Control alone; other digits and
+Shift/Option combos pass through. Control is restored afterwards while still held.
 
 ## Layout
 

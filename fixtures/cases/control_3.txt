@@ -1,0 +1,17 @@
+# Control+3 (physical Command+3 under the OS swap) arrives as Command+3.
+# Control is retracted, Command pressed and released around the 3, then
+# Control restored because it is still physically held. Release passes.
+> key_down control_l control
+< pass key_down control_l control
+> key_down other:20 control
+< suppress
+< post key_up control_l -
+< post key_down command_l command
+< post key_down other:20 command
+< post key_up command_l -
+< post key_down control_l control
+> key_up other:20 control
+< suppress
+< post key_up other:20 command
+> key_up control_l -
+< pass key_up control_l -

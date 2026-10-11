@@ -1,0 +1,15 @@
+# Right Control+3 uses right Command for the burst and restores right Control.
+> key_down control_r control
+< pass key_down control_r control
+> key_down other:20 control
+< suppress
+< post key_up control_r -
+< post key_down command_r command
+< post key_down other:20 command
+< post key_up command_r -
+< post key_down control_r control
+> key_up other:20 control
+< suppress
+< post key_up other:20 command
+> key_up control_r -
+< pass key_up control_r -

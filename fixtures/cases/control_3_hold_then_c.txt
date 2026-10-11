@@ -1,0 +1,21 @@
+# Control held after Control+3: a following Control+C still passes as Control+C,
+# and releasing Control afterwards leaves nothing stuck. Control released
+# before the 3 key_up still rewrites that up.
+> key_down control_l control
+< pass key_down control_l control
+> key_down other:20 control
+< suppress
+< post key_up control_l -
+< post key_down command_l command
+< post key_down other:20 command
+< post key_up command_l -
+< post key_down control_l control
+> key_down other:8 control
+< pass key_down other:8 control
+> key_up other:8 control
+< pass key_up other:8 control
+> key_up control_l -
+< pass key_up control_l -
+> key_up other:20 -
+< suppress
+< post key_up other:20 -

@@ -1,0 +1,21 @@
+# Only 3 is remapped: Control+2, Control+Shift+3, plain 3 pass through untouched.
+> key_down control_l control
+< pass key_down control_l control
+> key_down other:19 control
+< pass key_down other:19 control
+> key_up other:19 control
+< pass key_up other:19 control
+> key_down shift_l control|shift
+< pass key_down shift_l control|shift
+> key_down other:20 control|shift
+< pass key_down other:20 control|shift
+> key_up other:20 control|shift
+< pass key_up other:20 control|shift
+> key_up shift_l control
+< pass key_up shift_l control
+> key_up control_l -
+< pass key_up control_l -
+> key_down other:20 -
+< pass key_down other:20 -
+> key_up other:20 -
+< pass key_up other:20 -

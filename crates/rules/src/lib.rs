@@ -348,12 +348,16 @@ impl Side {
 pub struct Config {
     /// Control+Tab (and Control+Shift+Tab) -> Command+Tab with held-modifier fix.
     pub control_tab_to_command_tab: bool,
+    /// Control+3 -> Command+3 (physical Command+3 under the OS swap). Only the
+    /// digit 3, only with Control alone; Shift/Option combos pass through.
+    pub control_3_to_command_3: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             control_tab_to_command_tab: true,
+            control_3_to_command_3: true,
         }
     }
 }
@@ -376,6 +380,9 @@ impl Config {
                 "control_tab_to_command_tab" => {
                     cfg.control_tab_to_command_tab = parse_bool(v, idx + 1)?;
                 }
+                "control_3_to_command_3" => {
+                    cfg.control_3_to_command_3 = parse_bool(v, idx + 1)?;
+                }
                 other => return Err(format!("line {}: unknown key `{other}`", idx + 1)),
             }
         }
@@ -384,14 +391,15 @@ impl Config {
 
     pub fn render(&self) -> String {
         format!(
-            "# keytap config\ncontrol_tab_to_command_tab = {}\n",
-            if self.control_tab_to_command_tab {
-                "true"
-            } else {
-                "false"
-            }
+            "# keytap config\ncontrol_tab_to_command_tab = {}\ncontrol_3_to_command_3 = {}\n",
+            render_bool(self.control_tab_to_command_tab),
+            render_bool(self.control_3_to_command_3),
         )
     }
+}
+
+fn render_bool(v: bool) -> &'static str {
+    if v { "true" } else { "false" }
 }
 
 fn parse_bool(v: &str, line: usize) -> Result<bool, String> {
@@ -412,6 +420,8 @@ pub struct Engine {
     control_down: Option<Side>,
     /// After a remapped Tab: OS has been told Command is down for `side`.
     switcher: Option<Side>,
+    /// A remapped 3 is down (Control+3 sent as Command+3); its key_up is rewritten too.
+    digit3_down: bool,
 }
 
 impl Engine {
@@ -420,6 +430,7 @@ impl Engine {
             cfg,
             control_down: None,
             switcher: None,
+            digit3_down: false,
         }
     }
 
@@ -440,7 +451,7 @@ impl Engine {
 
     /// Process one input event into zero or more actions, in order.
     pub fn handle(&mut self, ev: Event) -> Vec<Action> {
-        if !self.cfg.control_tab_to_command_tab {
+        if !self.cfg.control_tab_to_command_tab && !self.cfg.control_3_to_command_3 {
             return vec![Action::Pass(ev)];
         }
         match ev.phase {
@@ -460,7 +471,11 @@ impl Engine {
             return vec![Action::Pass(ev)];
         }
 
-        if ev.key == Key::Tab && ev.flags.control && !ev.flags.command {
+        if self.cfg.control_tab_to_command_tab
+            && ev.key == Key::Tab
+            && ev.flags.control
+            && !ev.flags.command
+        {
             if let Some(side) = self.control_down {
                 return self.begin_or_continue_switcher(side, ev);
             }
@@ -473,6 +488,11 @@ impl Engine {
 
         if let Some(side) = self.switcher {
             return self.rewrite_while_switcher(side, ev);
+        }
+
+        if self.cfg.control_3_to_command_3 && ev.key == DIGIT_3 && is_control_only(ev.flags) {
+            let side = self.control_down.unwrap_or(Side::Left);
+            return self.control_3_down(side, ev);
         }
 
         vec![Action::Pass(ev)]
@@ -510,6 +530,14 @@ impl Engine {
                 return self.rewrite_while_switcher(side, ev);
             }
             return self.rewrite_while_switcher(side, ev);
+        }
+
+        if self.digit3_down && ev.key == DIGIT_3 {
+            // Matching up for a remapped 3: present it with Command, not Control.
+            self.digit3_down = false;
+            let mut out = ev;
+            out.flags = ev.flags.control_to_command();
+            return vec![Action::Suppress, Action::Post(out)];
         }
 
         vec![Action::Pass(ev)]
@@ -602,6 +630,48 @@ impl Engine {
         ]
     }
 
+    /// Control+3 down: drop it, retract Control, Command down, 3 with Command,
+    /// Command up, then put Control back down because the physical key is
+    /// still held. Net modifier state after the burst equals the state before
+    /// it, so nothing sticks whether Control is released next or held for
+    /// another key (autorepeat runs the same burst again).
+    fn control_3_down(&mut self, side: Side, ev: Event) -> Vec<Action> {
+        self.digit3_down = true;
+        let rest = Flags::empty()
+            .with_shift(ev.flags.shift)
+            .with_option(ev.flags.option)
+            .with_caps(ev.flags.caps);
+        let cmd = rest.with_command(true);
+        vec![
+            Action::Suppress,
+            Action::Post(Event {
+                phase: Phase::KeyUp,
+                key: side.control_key(),
+                flags: rest,
+            }),
+            Action::Post(Event {
+                phase: Phase::KeyDown,
+                key: side.command_key(),
+                flags: cmd,
+            }),
+            Action::Post(Event {
+                phase: Phase::KeyDown,
+                key: DIGIT_3,
+                flags: cmd,
+            }),
+            Action::Post(Event {
+                phase: Phase::KeyUp,
+                key: side.command_key(),
+                flags: rest,
+            }),
+            Action::Post(Event {
+                phase: Phase::KeyDown,
+                key: side.control_key(),
+                flags: rest.with_control(true),
+            }),
+        ]
+    }
+
     fn rewrite_while_switcher(&mut self, _side: Side, ev: Event) -> Vec<Action> {
         let mut out = ev;
         out.flags = ev.flags.control_to_command();
@@ -612,6 +682,14 @@ impl Engine {
         }
         vec![Action::Suppress, Action::Post(out)]
     }
+}
+
+/// macOS virtual keycode for the ANSI 3 key (kVK_ANSI_3).
+const DIGIT_3: Key = Key::Other(0x14);
+
+/// Control is the only chord modifier (caps lock is ignored).
+fn is_control_only(f: Flags) -> bool {
+    f.control && !f.command && !f.shift && !f.option
 }
 
 fn is_switcher_nav(key: Key) -> bool {
