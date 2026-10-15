@@ -24,7 +24,11 @@ const logPath = `${home}/Library/Logs/keytap.log`;
 
 const repoRoot = Bun.fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 const templatePath = `${repoRoot}/packaging/launchd/dev.keytap.plist.in`;
-const defaultAppBin = `${repoRoot}/target/Keytap.app/Contents/MacOS/keytap`;
+const builtApp = `${repoRoot}/target/Keytap.app`;
+// Installed copy lives outside target/ so cargo clean or disk purges cannot
+// strand the launch agent. Copy preserves the signature (same cdhash).
+const installedApp = "/Applications/Keytap.app";
+const defaultAppBin = `${installedApp}/Contents/MacOS/keytap`;
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -37,11 +41,15 @@ function usage(): never {
 }
 
 async function defaultBin(): Promise<string> {
-  if (await Bun.file(defaultAppBin).exists()) return defaultAppBin;
-  console.error(
-    "Keytap.app not found. Build it first:\n  bun scripts/bundle.bun.ts",
-  );
-  process.exit(1);
+  if (!(await Bun.file(`${builtApp}/Contents/MacOS/keytap`).exists())) {
+    console.error(
+      "Keytap.app not found. Build it first:\n  bun scripts/bundle.bun.ts",
+    );
+    process.exit(1);
+  }
+  await Bun.$`rm -rf ${installedApp}`;
+  await Bun.$`ditto ${builtApp} ${installedApp}`;
+  return defaultAppBin;
 }
 
 async function install() {
@@ -89,7 +97,7 @@ async function install() {
   console.log("binary  ", bin);
   console.log("log     ", logPath);
   console.log("Grant Accessibility to Keytap (the app), then:");
-  console.log(`  open ${repoRoot}/target/Keytap.app`);
+  console.log(`  open ${installedApp}`);
   console.log("or:");
   console.log(`  launchctl kickstart -k gui/$UID/${LABEL}`);
 }
