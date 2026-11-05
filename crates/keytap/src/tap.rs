@@ -181,7 +181,7 @@ fn event_from_cg(event: CGEventRef) -> Option<Event> {
 
 fn post_event(state: &TapState, proxy: CGEventTapProxy, ev: &Event) {
     if state.dry_run {
-        eprintln!("dry-run post {}", ev.render());
+        eprintln!("dry-run post");
         return;
     }
     let key_down = match ev.phase {
@@ -234,7 +234,12 @@ fn apply_actions(
 ) -> CGEventRef {
     if state.dry_run {
         for a in actions {
-            eprintln!("dry-run {}", a.render());
+            let kind = match a {
+                Action::Suppress => "suppress",
+                Action::Pass(_) => "pass",
+                Action::Post(_) => "post",
+            };
+            eprintln!("dry-run {kind}");
         }
         return original;
     }
