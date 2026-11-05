@@ -73,7 +73,7 @@ async function install() {
   }
 
   const template = await Bun.file(templatePath).text();
-  const debug = Bun.env.KEYTAP_DEBUG_INSTALL ?? "1";
+  const debug = Bun.env.KEYTAP_DEBUG_INSTALL ?? "0";
   const rendered = template
     .replaceAll("@KEYTAP_BIN@", bin)
     .replaceAll("@KEYTAP_LOG@", logPath)
