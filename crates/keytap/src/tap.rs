@@ -15,6 +15,14 @@ use keytap_rules::{Action, Engine, Event, Flags, Key, Phase};
 use std::ffi::c_void;
 use std::ptr;
 
+// Callback diagnostics must not unwind when stderr is unavailable.
+macro_rules! eprintln {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stderr().lock(), $($arg)*);
+    }};
+}
+
 /// Magic `kCGEventSourceUserData` value marking events we synthesized ('KTP1').
 pub const SYNTHETIC_TAG: i64 = 0x4B_54_50_31;
 
