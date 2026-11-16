@@ -15,11 +15,19 @@ use keytap_rules::{Action, Engine, Event, Flags, Key, Phase};
 use std::ffi::c_void;
 use std::ptr;
 
+// Callback diagnostics must not unwind when stderr is unavailable.
+macro_rules! eprintln {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stderr().lock(), $($arg)*);
+    }};
+}
+
 /// Magic `kCGEventSourceUserData` value marking events we synthesized ('KTP1').
 pub const SYNTHETIC_TAG: i64 = 0x4B_54_50_31;
 
 pub fn debug_from_env() -> bool {
-    std::env::var_os("KEYTAP_DEBUG").is_some_and(|v| v != "0" && v != "false")
+    std::env::var_os("KEYTAP_DEBUG").is_some_and(|v| !v.is_empty() && v != "0" && v != "false")
 }
 
 fn debug_log(state: &TapState, msg: &str) {
@@ -49,15 +57,15 @@ fn debug_key(key: Key) -> String {
     }
 }
 
-/// Heap state shared with the C callback. Owned by `run()` via Box; the tap
-/// holds only a raw pointer. The CFRunLoop delivers callbacks serially on the
-/// same thread that called `run()`, so no locks or atomics are required.
+/// Heap state owned by `Tap` and borrowed by CoreGraphics through `user_info`.
+/// The run loop delivers callbacks serially on the thread that called `Tap::run`.
 pub struct TapState {
     pub engine: Engine,
     pub port: CFMachPortRef,
     pub source: Option<CGEventSource>,
     pub dry_run: bool,
     pub debug: bool,
+    pass_through: bool,
 }
 
 /// Thin owner for CGEventSourceRef.
@@ -181,7 +189,7 @@ fn event_from_cg(event: CGEventRef) -> Option<Event> {
 
 fn post_event(state: &TapState, proxy: CGEventTapProxy, ev: &Event) {
     if state.dry_run {
-        eprintln!("dry-run post {}", ev.render());
+        eprintln!("dry-run post");
         return;
     }
     let key_down = match ev.phase {
@@ -234,7 +242,12 @@ fn apply_actions(
 ) -> CGEventRef {
     if state.dry_run {
         for a in actions {
-            eprintln!("dry-run {}", a.render());
+            let kind = match a {
+                Action::Suppress => "suppress",
+                Action::Pass(_) => "pass",
+                Action::Post(_) => "post",
+            };
+            eprintln!("dry-run {kind}");
         }
         return original;
     }
@@ -281,6 +294,29 @@ pub unsafe extern "C" fn tap_callback(
     event: CGEventRef,
     user_info: *mut c_void,
 ) -> CGEventRef {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        tap_callback_inner(proxy, etype, event, user_info)
+    })) {
+        Ok(result) => result,
+        Err(payload) => {
+            // Dropping an arbitrary panic payload can itself panic.
+            std::mem::forget(payload);
+            // Fail open: engine state (held keys) is unreliable after a panic,
+            // so stop rewriting and pass every later event through unchanged.
+            if !user_info.is_null() {
+                unsafe { (*user_info.cast::<TapState>()).pass_through = true };
+            }
+            event
+        }
+    }
+}
+
+unsafe fn tap_callback_inner(
+    proxy: CGEventTapProxy,
+    etype: CGEventType,
+    event: CGEventRef,
+    user_info: *mut c_void,
+) -> CGEventRef {
     if user_info.is_null() {
         return event;
     }
@@ -292,6 +328,10 @@ pub unsafe extern "C" fn tap_callback(
             unsafe { ffi::CGEventTapEnable(state.port, true) };
             debug_log(state, "tap re-enabled");
         }
+        return event;
+    }
+
+    if state.pass_through {
         return event;
     }
 
@@ -372,6 +412,7 @@ impl Tap {
             source,
             dry_run,
             debug,
+            pass_through: false,
         });
         let state_ptr = Box::into_raw(state);
 
@@ -401,6 +442,7 @@ impl Tap {
         let rl_source = unsafe { ffi::CFMachPortCreateRunLoopSource(ptr::null(), port, 0) };
         if rl_source.is_null() {
             unsafe {
+                ffi::CFMachPortInvalidate(port);
                 ffi::CFRelease(port as ffi::CFTypeRef);
                 drop(Box::from_raw(state_ptr));
             }
@@ -430,6 +472,8 @@ impl Drop for Tap {
         unsafe {
             if !self.port.is_null() {
                 ffi::CGEventTapEnable(self.port, false);
+                // Invalidation detaches the run-loop source before user_info is freed.
+                ffi::CFMachPortInvalidate(self.port);
             }
             if !self.source.is_null() {
                 ffi::CFRelease(self.source as ffi::CFTypeRef);
