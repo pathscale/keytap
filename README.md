@@ -133,13 +133,13 @@ cargo fmt --all -- --check
 cargo run -p fixtures -- check
 ```
 
-2. Release binary, bundle, install. The install script turns debug ON by
-   default, so prefix `KEYTAP_DEBUG_INSTALL=0` unless you want noisy logs:
+2. Release binary, bundle, install. Installation leaves debug logging off by
+   default. Set `KEYTAP_DEBUG_INSTALL=1` to opt in:
 
 ```
 cargo build --release
 bun scripts/bundle.bun.ts
-KEYTAP_DEBUG_INSTALL=0 bun scripts/install.bun.ts install
+bun scripts/install.bun.ts install
 ```
 
 3. Re-grant Accessibility (every ad-hoc rebuild drops the TCC grant; see
@@ -165,8 +165,9 @@ Stop:
 launchctl bootout gui/$UID/dev.keytap
 ```
 
-Debug logging is controlled by `KEYTAP_DEBUG` in the launchd plist. Leave it
-off for normal use; it is noisy.
+For direct runs, unset, empty, `0`, and `false` disable `KEYTAP_DEBUG`; any
+other nonempty value enables debug diagnostics. The installed daemon reads the
+launchd plist setting, and ordinary startup status messages still appear.
 
 ## Bundle and Accessibility (TCC)
 
@@ -189,6 +190,19 @@ Verify with:
 target/Keytap.app/Contents/MacOS/keytap --check-ffi   # expect: trusted true
 ```
 
+`bun scripts/install.bun.ts install` copies the bundle to `/Applications/Keytap.app`
+(the directory must be writable by your user) and the launch agent runs that
+copy. The Accessibility grant for the launchd-run daemon is therefore the one
+for `/Applications/Keytap.app`, not the `target/` build. After installing, grant
+and verify the installed app:
+
+```
+open /Applications/Keytap.app
+/Applications/Keytap.app/Contents/MacOS/keytap --check-ffi   # expect: trusted true
+```
+
+`bun scripts/install.bun.ts uninstall` removes the agent, the plist, and that copy.
+
 `security find-identity -p codesigning -v` listed no Apple Development identity
 on the build machine, so the bundle is ad-hoc signed (`codesign --sign -`) with
 `--identifier dev.keytap`. Ad-hoc signing is **not** a stable local TCC
@@ -197,8 +211,8 @@ identity: macOS ties the Accessibility grant to the binary's code hash, so
 `keytap: not trusted for Accessibility yet` and launchd retries every 10s.
 
 Fix after each rebuild: toggle Keytap off and on in System Settings →
-Privacy & Security → Accessibility (or remove the entry, `open target/Keytap.app`,
-re-enable).
+Privacy & Security → Accessibility (or remove the entry, open the app you
+granted, re-enable). For the login item that is `/Applications/Keytap.app`.
 
 Permanent fix options:
 
